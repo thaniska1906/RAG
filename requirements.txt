@@ -16,9 +16,10 @@ langchain-text-splitters
  
 langchain-google-genai
 
+langchain-huggingface
+
 google-generativeai
 
 numpy
 
 sentence-transformers
- 
