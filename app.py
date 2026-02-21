@@ -9,7 +9,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 
@@ -59,32 +59,13 @@ def split_into_chunks(text):
 # --------------------------------------------------
 # BUILD FAISS INDEX (LOCAL EMBEDDINGS)
 # --------------------------------------------------
-def build_faiss_index(chunks):
-    """
-    Create FAISS vector store using local Hugging Face embeddings
-    """
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
 
-    documents = [Document(page_content=chunk) for chunk in chunks]
-
-    vector_store = FAISS.from_documents(documents, embeddings)
-    vector_store.save_local("faiss_index")
 
 
 # --------------------------------------------------
 # LOAD FAISS INDEX
 # --------------------------------------------------
-def load_faiss_index():
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-    return FAISS.load_local(
-    "faiss_index",
-    embeddings,
-    allow_dangerous_deserialization=True
-)
+
 
 
 # --------------------------------------------------
@@ -128,14 +109,19 @@ def answer_question(question):
     Complete RAG pipeline:
     Retrieval → Prompt → LLM
     """
-    vector_store = load_faiss_index()
 
-    # Retrieve top-k relevant chunks
+    if "vector_store" not in st.session_state:
+        st.error("Please upload and process PDFs first.")
+        return
+
+    vector_store = st.session_state.vector_store
+
     docs = vector_store.similarity_search(question, k=4)
 
     context = "\n\n".join(doc.page_content for doc in docs)
 
     prompt, llm = get_prompt_and_llm()
+
     final_prompt = prompt.format(
         context=context,
         question=question
@@ -176,12 +162,18 @@ def main():
                 raw_text = read_pdfs(pdf_files)
                 chunks = split_into_chunks(raw_text)
 
-                # Avoid rebuilding index unnecessarily
-                if not os.path.exists("faiss_index"):
-                    build_faiss_index(chunks)
+                embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
 
-            st.success("PDFs processed and indexed successfully!")
+            documents = [Document(page_content=chunk) for chunk in chunks]
 
+            vector_store = FAISS.from_documents(documents, embeddings)
+
+            # Store in session (NOT disk)
+            st.session_state.vector_store = vector_store
+
+    st.success("PDFs processed and indexed successfully!")
 
 if __name__ == "__main__":
     main()
